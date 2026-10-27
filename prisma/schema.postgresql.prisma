@@ -1,0 +1,289 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  ORGANIZER
+  ADMIN
+}
+
+enum EventStatus {
+  DRAFT
+  PENDING_APPROVAL
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum EventFormat {
+  OFFLINE
+  ONLINE
+  HYBRID
+}
+
+enum RegistrationType {
+  INDIVIDUAL
+  TEAM
+}
+
+enum RegistrationStatus {
+  PENDING
+  CONFIRMED
+  WAITLISTED
+  REJECTED
+  CANCELLED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model User {
+  id               String          @id @default(cuid())
+  email            String          @unique
+  passwordHash     String
+  name             String
+  role             Role            @default(STUDENT)
+  isSuspended      Boolean         @default(false)
+  avatarUrl        String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  profile          Profile?
+  organizedEvents  Event[]         @relation("OrganizerEvents")
+  registrations    Registration[]
+  ledTeams         Team[]          @relation("TeamLeader")
+  teamMemberships  TeamMembership[]
+  sentInvitations  TeamInvitation[] @relation("SentInvitations")
+  receivedInvitations TeamInvitation[] @relation("ReceivedInvitations")
+  notifications    Notification[]
+  certificates     Certificate[]
+  auditLogs        AuditLog[]
+  passwordResets   PasswordResetToken[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Profile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  college         String?
+  department      String?
+  graduationYear  Int?
+  studentIdNumber String?
+  phoneNumber     String?
+  githubUrl       String?
+  linkedinUrl     String?
+  bio             String?
+  skills          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model EventCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  icon        String?
+  color       String?
+  events      Event[]
+}
+
+model Event {
+  id                 String           @id @default(cuid())
+  title              String
+  slug               String           @unique
+  description        String           @db.Text
+  shortDescription   String?          @db.Text
+  categoryId         String
+  category           EventCategory    @relation(fields: [categoryId], references: [id])
+  organizerId        String
+  organizer          User             @relation("OrganizerEvents", fields: [organizerId], references: [id])
+  bannerUrl          String?
+  format             EventFormat      @default(OFFLINE)
+  venue              String?
+  onlineLink         String?
+  startDate          DateTime
+  endDate            DateTime
+  registrationDeadline DateTime
+  capacity           Int              @default(100)
+  registrationType   RegistrationType @default(INDIVIDUAL)
+  minTeamSize        Int              @default(1)
+  maxTeamSize        Int              @default(4)
+  eligibility        String?          @db.Text
+  rules              String?          @db.Text
+  prizes             String?          @db.Text
+  status             EventStatus      @default(PUBLISHED)
+  cancellationReason String?
+  approvalNotes      String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  registrations      Registration[]
+  teams              Team[]
+  certificates       Certificate[]
+  attendances        Attendance[]
+
+  @@index([categoryId])
+  @@index([organizerId])
+  @@index([status])
+  @@index([startDate])
+}
+
+model Registration {
+  id               String             @id @default(cuid())
+  registrationNumber String           @unique
+  eventId          String
+  event            Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId           String?
+  team             Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  status           RegistrationStatus @default(CONFIRMED)
+  waitlistPosition Int?
+  notes            String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  ticket           Ticket?
+  attendance       Attendance?
+
+  @@unique([eventId, userId])
+  @@index([eventId, status])
+  @@index([userId])
+}
+
+model Team {
+  id           String           @id @default(cuid())
+  name         String
+  code         String           @unique
+  eventId      String
+  event        Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  leaderId     String
+  leader       User             @relation("TeamLeader", fields: [leaderId], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  members      TeamMembership[]
+  invitations  TeamInvitation[]
+  registrations Registration[]
+
+  @@index([eventId])
+  @@index([leaderId])
+}
+
+model TeamMembership {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("MEMBER")
+  joinedAt  DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+}
+
+model TeamInvitation {
+  id         String           @id @default(cuid())
+  teamId     String
+  team       Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  inviterId  String
+  inviter    User             @relation("SentInvitations", fields: [inviterId], references: [id])
+  inviteeId  String
+  invitee    User             @relation("ReceivedInvitations", fields: [inviteeId], references: [id])
+  status     InvitationStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([teamId, inviteeId])
+}
+
+model Ticket {
+  id             String       @id @default(cuid())
+  registrationId String       @unique
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  ticketToken    String       @unique
+  qrCodeData     String       @db.Text
+  issuedAt       DateTime     @default(now())
+}
+
+model Attendance {
+  id             String       @id @default(cuid())
+  eventId        String
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrationId String       @unique
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  checkedInById  String?
+  checkedInAt    DateTime     @default(now())
+  checkInMethod  String       @default("QR_SCAN")
+}
+
+model Certificate {
+  id             String   @id @default(cuid())
+  certificateNumber String @unique
+  eventId        String
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  recipientName  String
+  issuedAt       DateTime @default(now())
+  verificationUrl String?
+
+  @@index([userId])
+  @@index([eventId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("GENERAL")
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  targetType String
+  targetId  String?
+  details   String?  @db.Text
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([action])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}

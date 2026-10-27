@@ -1,0 +1,6 @@
+{
+  "name": "TechFest Hub",
+  "description": "Full-Stack College Technical Event Registration Platform for discovering hackathons, workshops, and coding contests with team registrations, digital QR tickets, check-in, and verified certificates.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
